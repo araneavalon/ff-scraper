@@ -1,0 +1,17 @@
+{
+	"presets": [
+		[ "@babel/preset-env", {
+			"targets": {
+				"node": "current",
+				"chrome": "65",
+			},
+		} ]
+	],
+	"plugins": [
+		[ "babel-plugin-module-resolver", { "root": "./src" } ],
+		// plugin-proposal-decorators must come before plugin-proposal-class-properties
+		[ "@babel/plugin-proposal-decorators", { "legacy": true } ],
+		"@babel/plugin-proposal-class-properties",
+		"@babel/plugin-proposal-object-rest-spread",
+	],
+}

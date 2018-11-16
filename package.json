@@ -1,0 +1,35 @@
+{
+  "name": "ff-scraper",
+  "version": "0.0.1",
+  "description": "Download all fics in anime/rwby from ff.net",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.2",
+    "debug": "^4.1.0",
+    "fs-extra": "^7.0.1",
+    "lodash": "^4.17.10",
+    "qs": "^6.5.2",
+    "request": "^2.88.0",
+    "request-promise-native": "^1.0.5",
+    "uuid": "^3.3.2"
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0",
+    "@babel/core": "^7.0.0",
+    "@babel/node": "^7.0.0",
+    "@babel/plugin-proposal-class-properties": "^7.0.0",
+    "@babel/plugin-proposal-decorators": "^7.0.0",
+    "@babel/plugin-proposal-object-rest-spread": "^7.0.0",
+    "@babel/plugin-syntax-async-generators": "^7.0.0",
+    "@babel/preset-env": "^7.0.0",
+    "@babel/register": "^7.0.0",
+    "babel-eslint": "^10.0.1",
+    "babel-plugin-module-resolver": "^3.1.1",
+    "eslint": "^5.8.0"
+  },
+  "scripts": {
+    "lint": "eslint src",
+    "start": "babel-node src"
+  },
+  "author": "Erin Valon",
+  "license": "UNLICENSED"
+}

@@ -1,6 +1,7 @@
 'use strict';
 
 import cheerio from 'cheerio';
+import moment from 'moment';
 
 
 export class FFParser {
@@ -16,15 +17,14 @@ export class FFParser {
 			characters: [],
 			relationships: [],
 			words: null,
-			reviews: null,
-			faves: null,
-			follows: null,
+			reviews: 0,
+			faves: 0,
+			follows: 0,
 			published: null,
 			updated: null,
 			cached: null,
 			complete: false,
 			lastChapter: null,
-			chapters: [],
 			errors: [],
 		};
 		return new Proxy( story, {
@@ -89,7 +89,7 @@ export class FFParser {
 			}
 
 			const f = {};
-			for( let key in fragment ) {
+			for( const key in fragment ) {
 				if( key === 'a' && fragment.a !== 'LEFT' ) {
 					f.a = fragment.a;
 				} else if( key !== 'value' && fragment[ key ] === true ) {
@@ -162,22 +162,22 @@ export class FFParser {
 				switch( key ) {
 					case 'Rated':
 						story.rating = String( value );
-						break;
+						return;
 					case 'Chapters':
 						story.lastChapter = Number( value.replace( /,/g, '' ) );
-						break;
+						return;
 					case 'Words':
 						story.words = Number( value.replace( /,/g, '' ) );
-						break;
+						return;
 					case 'Reviews':
 						story.reviews = Number( value.replace( /,/g, '' ) );
-						break;
+						return;
 					case 'Favs':
 						story.faves = Number( value.replace( /,/g, '' ) );
-						break;
+						return;
 					case 'Follows':
 						story.follows = Number( value.replace( /,/g, '' ) );
-						break;
+						return;
 				}
 			}
 
@@ -187,7 +187,7 @@ export class FFParser {
 				story.language = s;
 			} else if( i === 2 ) {
 				story.genres = s.replace( 'Hurt/Comfort', '_HC_' ).split( '/' ).map( ( genre ) => genre.replace( '_HC_', 'Hurt/Comfort' ) );
-			} else if( i === ( l - 1 ) || i === ( l - 2 ) ) {
+			} else if( ( i === ( l - 1 ) || i === ( l - 2 ) ) && !s.startsWith( 'Published:' ) && !s.startsWith( 'Updated:' ) ) {
 				story.characters = s
 					.split( /[\[\],]/g )
 					.map( ( v ) => v.trim() )
@@ -207,7 +207,7 @@ export class FFParser {
 	}
 
 	parsePage( html ) {
-		const now = ( +( new Date() ) ) / 1000;
+		const now = moment.utc().unix();
 		const $ = cheerio.load( html );
 		return $( '.z-list.zhover.zpointer' ).toArray().map( ( e ) =>
 			this.parseStory( now, ( s ) => $( e ).find( s ) ) );

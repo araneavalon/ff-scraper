@@ -6,10 +6,7 @@ import { RequestQueue } from './queue';
 import { FFNet } from './ff';
 
 
-const queue = new RequestQueue( {
-	logAll: true,
-} );
-const ff = new FFNet( queue );
+const ff = new FFNet();
 
 ff.getPages( 1 )
 	.then( ( pages ) =>

@@ -49,29 +49,32 @@
 import fs from 'fs-extra';
 import path from 'path';
 import _ from 'lodash';
-import moment from 'moment';
+import uuid from 'uuid/v4';
 
 import _debug from 'debug';
-const debug_ff = _debug( 'scraper:ff' );
-const debug_rq = _debug( 'scraper:request' );
-const debug_fs = _debug( 'scraper:fs' );
+const debug_ff = _debug( 'ff:scraper' );
+const debug_rq = _debug( 'ff:request' );
+const debug_fs = _debug( 'ff:fs' );
 
 import { RequestQueue } from '../queue';
 import { ffParser } from './parser';
 
 
-export class FFNet {
+export class FFScraper {
 	constructor( options = {} ) {
 		this.queue = new RequestQueue( options.queue );
 
-		this.outDir = ( options.outDir != null ) ? options.outDir : path.join( '.', 'output' );
-		this.dumpDir = ( options.dumpDir != null ) ? options.dumpDir : null;
+		this.uuid = ( options.uuid != null ) ? options.uuid : uuid();
+		this.category = options.category;
+
+		this.outDir = path.join( ( options.outDir != null ) ? options.outDir : '.', this.uuid );
+		this.dumpDir = options.dumpHtml ? path.join( this.outDir, 'http-dump' ) : null;
 
 		this.dirs = {};
 	}
 
 	getPageUrl( page ) {
-		return `https://www.fanfiction.net/anime/RWBY/?srt=2&r=10&p=${page}`;
+		return `https://www.fanfiction.net/${this.category}/?srt=2&r=10&p=${page}`;
 	}
 	getChapterUrl( story_id, chapter ) {
 		return `https://www.fanfiction.net/s/${story_id}/${chapter}`;
@@ -96,7 +99,7 @@ export class FFNet {
 		if( !this.dirs[ dir ] ) {
 			this.dirs[ dir ] = Promise.resolve()
 				.then( () => debug_fs( `Creating directory. (dir=${dir})` ) )
-				.then( () => fs.makedirp( dir ) )
+				.then( () => fs.mkdirp( dir ) )
 				.then( () => debug_fs( `Created directory. (dir=${dir})` ) );
 		}
 		return await this.dirs[ dir ];
@@ -109,6 +112,15 @@ export class FFNet {
 		debug_fs( `Dumping response to file. (file=${file})` );
 		await fs.writeFile( file, content );
 		debug_fs( `Finished dumping response to file. (file=${file})` );
+	}
+
+	async writeFile( fileName, json ) {
+		const file = path.join( this.outDir, fileName ),
+			content = JSON.stringify( json, null, 2 ) + '\n';
+		await this.makeDir( file );
+		debug_fs( `Writing output to file. (file=${file} length=${content.length})` );
+		await fs.writeFile( file, content );
+		debug_fs( `Finished writing output to file. (file=${file} length=${content.length})` );
 	}
 
 	async request( url ) {
@@ -130,69 +142,54 @@ export class FFNet {
 		return response;
 	}
 
-	/**
-	 * Get the number of the last page of available results.
-	 * @return {Promise<number>} The the page number of the last page of results.
-	 */
 	async getLastPageNumber() {
 
 	}
 
-	/**
-	 * Get a story chapter.
-	 * @param {number} story The story id of the current fic.
-	 * @param {number} chapter The (1-indexed) chapter number to request.
-	 * @return {Promise<Chapter>} The parsed chapter for this page.
-	 */
-	async getChapter( story, chapter ) {
-		debug_ff( `Getting chapter. (${story}/${chapter})` );
-		const html = await this.request( this.getChapterUrl( story, chapter ) );
-		debug_ff( `Got chapter. (${story}/${chapter} length=${html.length})` );
-		return ffParser.parseChapter( html );
+	async getChapter( story_id, chapter_id ) {
+		debug_ff( `Getting chapter. (${story_id}/${chapter_id})` );
+		const html = await this.request( this.getChapterUrl( story_id, chapter_id ) );
+		debug_ff( `Got chapter. (${story_id}/${chapter_id} length=${html.length})` );
+		const chapter = ffParser.parseChapter( html );
+		await this.writeFile( this.getChapterFile( story_id, chapter_id ), chapter );
 	}
 
-	/**
-	 * Get and parse a full page of story headers.
-	 * @param {number} page The page number to request.
-	 * @return {Promise<Array<number>>} The story_ids for this page.
-	 */
+	async getChapters( story_id, lastChapter ) {
+		debug_ff( `Getting chapters. (${story_id} chapters=${lastChapter})` );
+		const promises = [];
+		for( let chapter_id = 1; chapter_id <= lastChapter; ++chapter_id ) {
+			promises.push( this.getChapter( story_id, chapter_id ) );
+		}
+		const chapters = await Promise.all( promises );
+		debug_ff( `Got chapters. (${story_id} chapters=${chapters.length})` );
+	}
+
 	async getPage( page ) {
 		debug_ff( `Getting page. (${page})` );
-		const html = await this.request( this.url.page( page ) );
+		const html = await this.request( this.getPageUrl( page ) );
 		debug_ff( `Got page. (${page} length=${html.length})` );
 		const stories = ffParser.parsePage( html );
 		debug_ff( `Parsed stories. (stories=${stories.length} chapters=${stories.reduce( ( sum, { lastChapter } ) => sum + lastChapter, 0 )})`)
+		const promises = [];
 		for( const story of stories ) {
-			debug_ff( `Getting chapters. (${story.id} lastChapter=${story.lastChapter})` );
-			for( let chapter = 1; chapter <= story.lastChapter; ++chapter ) {
-				story.chapters.push( await this.getChapter( story.id, chapter ) );
-			}
-			debug_ff( `Got chapters. (${story.id} lastChapter=${story.lastChapter})` );
+			promises.push( this.getChapters( story.id, story.lastChapter ) );
+			promises.push( this.writeFile( this.getStoryFile( story.id ), story ) );
 		}
-		return stories;
+		await Promise.all( promises );
 	}
 
-	/**
-	 * Get and parse a set of pages. Gets pages in reverse order, last page, to first page.
-	 * Stories are in the normal order.
-	 * @param {number} [options.firstPage=1] The first (1-indexed) page of results to retrieve.
-	 * @param {number} [options.lastPage=this.getLastPageNumber()] The last (1-indexed) page of results to retrieve.
-	 * @return {Promise<Array<number>>} An array of story_ids from the pages.
-	 */
-	async getPages( options = {} ) {
-		options.lastPage = ( options.lastPage != null ) ? options.lastPage : await this.getLastPageNumber();
-		options.firstPage = ( options.firstPage != null ) ? options.firstPage : 1;
-		if( options.firstPage > options.lastPage ) {
-			throw new Error( `firstPage=${options.firstPage} must not be greater than lastPage=${options.lastPage}` );
+	async getPages( firstPage = 1, _lastPage = null ) {
+		const lastPage = ( _lastPage == null ) ? await this.getLastPageNumber() : _lastPage;
+		if( firstPage > lastPage ) {
+			throw new Error( `firstPage=${firstPage} must not be greater than lastPage=${lastPage}` );
 		}
 
-		debug_ff( `Getting pages. [${options.firstPage}, ${options.lastPage}]` );
+		debug_ff( `Getting pages. [${firstPage}, ${lastPage}]` );
 		const promises = [];
-		for( let page = options.lastPage; page >= options.firstPage; --page ) {
-			promises.unshift( this.getPage( page ) );
+		for( let page = lastPage; page >= firstPage; --page ) {
+			promises.push( this.getPage( page ) );
 		}
-		const stories = _.flatten( await Promise.all( promises ) );
-		debug_ff( `Got pages. [${options.firstPage}, ${options.lastPage}] (length=${stories.length})` );
-		return stories;
+		await Promise.all( promises );
+		debug_ff( `Got pages. [${firstPage}, ${lastPage}]` );
 	}
 }

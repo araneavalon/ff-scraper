@@ -1,7 +1,9 @@
 'use strict';
 
 import cheerio from 'cheerio';
+import { URL } from 'url';
 import moment from 'moment';
+import _ from 'lodash';
 
 
 export class FFParser {
@@ -211,6 +213,12 @@ export class FFParser {
 		const $ = cheerio.load( html );
 		return $( '.z-list.zhover.zpointer' ).toArray().map( ( e ) =>
 			this.parseStory( now, ( s ) => $( e ).find( s ) ) );
+	}
+
+	parseLastPageNumber( html ) {
+		const href = cheerio.load( html )( 'a:contains(Last)' ).first().attr( 'href' ),
+			url = new URL( href, 'http://www.fanfiction.net/' );
+		return Number( url.searchParams.get( 'p' ) );
 	}
 }
 

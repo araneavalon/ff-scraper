@@ -4,7 +4,7 @@ import _ from 'lodash';
 import request from 'request-promise-native';
 
 import _debug from 'debug';
-const debug = _debug( 'queue' );
+const debug = _debug( 'ff:queue' );
 
 
 export class RequestQueue {
@@ -17,7 +17,8 @@ export class RequestQueue {
 			throw new Error( 'minDelay must not be larger than maxDelay.' );
 		}
 
-		this.queue = Promise.resolve();
+		this.queue = [];
+		this.draining = false;
 	}
 
 	delay() {
@@ -28,16 +29,35 @@ export class RequestQueue {
 		} );
 	}
 
-	request( _options ) {
-		const options = _.merge( {}, this.requestOptions, _options );
-		debug( `Adding request. (${options.url})` );
-		const out = this.queue
-			.then( () => this.delay() )
-			.then( () => request( options ) );
-		// Do not fail all requests if this one fails, but do fail this request if it fails.
-		this.queue = out
-			.catch( () => {} )
-			.then( () => debug( `Request finished. (${options.url})` ) );
-		return out;
+	async drain() {
+		if( this.draining ) {
+			return;
+		}
+		this.draining = true;
+
+		while( this.queue.length > 0 ) {
+			const [ options, pass, fail ] = this.queue.shift();
+			await this.delay()
+				.then( () => debug( `Request begun. (queue=${this.queue.length} url=${options.url})` ) )
+				.then( () => request( options ) )
+				.then( ( response ) => pass( response ) )
+				.catch( ( error ) => fail( error ) )
+				.then( () => debug( `Request finished. (queue=${this.queue.length} url=${options.url})` ) );
+		}
+
+		this.draining = false;
+	}
+
+	request( _options, priority = 0 ) {
+		return new Promise( ( pass, fail ) => {
+			const options = _.merge( {}, this.requestOptions, _options );
+			debug( `Adding request. (${options.url})` );
+			if( priority === 0 ) {
+				this.queue.push( [ options, pass, fail ] );
+			} else {
+				this.queue.unshift( [ options, pass, fail ] );
+			}
+			this.drain();
+		} );
 	}
 }

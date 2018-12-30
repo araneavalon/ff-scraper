@@ -96,9 +96,9 @@ export class FFScraper {
 	async rotateChapter( story_id, chapter_id, chapter ) {
 		const v = await new Promise( ( pass, fail ) => {
 			const child = execFile( 'find', [
-				this.getChapterFile( story_id, chapter_id, '*' ),
+				path.join( this.outDir, this.getStoryFile( story_id ) ),
 				'-type', 'f',
-				'-name', 'story.json' ] );
+				'-name', this.getChapterFile( story_id, chapter_id, '*' ) ] );
 
 			let v = 1;
 			child.on( 'error', ( error ) => fail( error ) );
@@ -113,9 +113,9 @@ export class FFScraper {
 				} );
 		} );
 
-		const file = path.join( this.outDir, this.getChapterFile( story_id, chapter_id ) ),
+		const file = this.getChapterFile( story_id, chapter_id ),
 			vFile = path.join( this.outDir, this.getChapterFile( story_id, chapter_id, v ) );
-		await fs.move( file, vFile );
+		await fs.move( path.join( this.outDir, file ), vFile );
 		await this.writeFile( file, chapter );
 	}
 
